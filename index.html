@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clock Tower Solitaire</title>
+    
+    <!-- PWA/App-like Appearance Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#1f2937">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* Custom styles for the circular layout */
@@ -11,10 +16,10 @@
             font-family: 'Inter', sans-serif;
             background-color: #1f2937; /* Dark gray background */
             display: flex;
-            flex-direction: column; /* Children stack vertically */
-            justify-content: flex-start; /* Start content from the top */
+            flex-direction: column; 
+            justify-content: flex-start; 
             align-items: center;
-            min-height: 100vh; /* Ensure it fills the viewport */
+            min-height: 100vh; 
             margin: 0;
             padding: 1rem;
             box-sizing: border-box;
@@ -22,7 +27,6 @@
         }
 
         #app {
-            /* Max width for overall content */
             max-width: 900px;
             width: 95vw;
             display: flex;
@@ -32,11 +36,9 @@
 
         #game-area {
             position: relative;
-            /* Use viewport units for better scaling in iframes/small screens */
             width: 100%; 
-            max-width: 800px; /* Max size for the circular area */
+            max-width: 800px; 
             aspect-ratio: 1 / 1;
-            /* Reduced margin to save vertical space */
             margin: 1rem auto; 
             display: flex;
             justify-content: center;
@@ -46,14 +48,45 @@
         .clock-position {
             position: absolute;
             width: 80px; /* Standard card width */
-            height: 120px; /* Standard card height */
+            min-height: 120px; /* Minimum height for one card, will expand for stack */
+            /* Add max height to prevent stacks from growing too big on huge screens */
+            max-height: 160px; /* Increased max height to accommodate larger offset */
             transform-origin: 50% 50%;
         }
 
+        /* Center stack container setup */
+        .center-stack-container {
+            width: 80px;
+            min-height: 120px; /* Minimum height for one card, will expand for stack */
+            margin: 0 10px;
+            position: relative; 
+            transition: all 0.2s ease;
+            cursor: default; 
+            /* Ensure the text below the stack is pushed down */
+            display: flex;
+            flex-direction: column; 
+            justify-content: flex-end; 
+        }
+        
+        /* New: Styles for cards within a stack (both clock and center) */
+        .card-in-stack {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 120px; /* Cards have a fixed height of 120px */
+            transition: all 0.2s ease;
+            border-radius: 8px; /* Maintain rounded corners */
+            box-sizing: border-box;
+        }
+        
+        /* The base card stack placeholder for empty positions */
         .card-stack {
             position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
-            height: 100%;
+            height: 120px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -63,13 +96,14 @@
             border: 2px dashed #4b5563;
         }
 
+
         .card {
             width: 100%;
             height: 100%;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            padding: 4px;
+            padding: 0;
             box-sizing: border-box;
             background-color: white;
             color: #333;
@@ -77,8 +111,13 @@
             border: 1px solid #aaa;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
             transition: transform 0.1s ease, box-shadow 0.1s ease;
-            cursor: grab; /* Indicates drag capability */
-            touch-action: none; /* Crucial for mobile dragging */
+            cursor: default; 
+            touch-action: none; 
+            position: relative; 
+        }
+        
+        .card-in-stack.draggable > .card {
+            cursor: grab; /* Only the top card in a stack that is playable is draggable */
         }
         
         /* Ensures inner elements of the card (like suit/rank spans) don't capture the click/touch event. */
@@ -86,33 +125,15 @@
             pointer-events: none;
         }
 
-        .card.dragging {
+        .card-in-stack.dragging {
             cursor: grabbing;
-            z-index: 10000; /* Ensure it stays on top of everything */
+            z-index: 10000 !important; /* Ensure it stays on top of everything */
             opacity: 0.85;
             box-shadow: 0 15px 30px rgba(0, 0, 0, 0.7);
-            transition: none; /* Disable transition during drag for smooth follow */
-            pointer-events: none; /* Prevents dragging card from being hit-tested when fixed */
+            transition: none; 
+            pointer-events: none; 
         }
         
-        /* Center stack container setup */
-        .center-stack-container {
-            width: 80px;
-            height: 120px;
-            margin: 0 10px;
-            position: relative; 
-            transition: all 0.2s ease;
-            cursor: default; /* Default cursor for non-playable area */
-        }
-
-        /* Center card explicit positioning: Ensures cards layer correctly */
-        .center-stack-container .card {
-            position: absolute; 
-            top: 0; 
-            left: 0;
-            z-index: 10; /* The visible top card */
-        }
-
         .card.face-down {
             background-color: #b91c1c; /* Red back */
             border: 4px solid #fca5a5; /* Light red border */
@@ -124,32 +145,18 @@
             user-select: none;
             cursor: default;
         }
-        
-        /* Styling for the hidden reserve card */
-        .reserve-card {
-            z-index: 5; /* Behind the top card */
-            top: 5px;
-            left: 5px;
-            width: 90%;
-            height: 90%;
-        }
-
-        .card.face-down::after {
-            content: '⭐';
-        }
 
         .red-suit { color: #dc2626; }
         
         /* Highlight for playable clock cards */
-        .playable-card {
+        .playable-card > .card {
             box-shadow: 0 0 15px 5px #facc15, 0 4px 6px rgba(0, 0, 0, 0.5);
             transform: scale(1.05);
             z-index: 10;
         }
         
         /* Highlight drop target: Apply to container or card */
-        .center-stack-container.drop-target,
-        .drop-target {
+        .center-stack-container.drop-target {
             background-color: #10b981 !important; /* Green glow for drop */
             border-color: #059669 !important;
             box-shadow: 0 0 15px 5px #10b981 !important;
@@ -159,33 +166,81 @@
         .center-stack-container.reserve-available {
             box-shadow: 0 0 15px 5px #3b82f6; /* Blue glow */
             cursor: pointer; /* Change cursor to indicate clickability */
-            /* IMPORTANT FIX: Ensure the click goes to the container, not the card elements inside */
             pointer-events: auto;
         }
         
         /* CRITICAL FIX: Make all child cards transparent to clicks when the reserve is available, 
            so the click event reaches the reserve-available container beneath them. */
-        .center-stack-container.reserve-available > .card,
+        .center-stack-container.reserve-available > .card-in-stack,
         .center-stack-container.reserve-available > .card-stack {
             pointer-events: none;
         }
 
-        /* Card value display */
-        .card-value-top, .card-value-bottom {
+        /* --- ABSOLUTE POSITIONING FIX FOR CLIPPING --- */
+        .card-corner {
+            position: absolute;
             display: flex;
             flex-direction: column;
-            align-items: flex-start;
             line-height: 1;
+            padding: 4px; 
+            z-index: 10;
+            pointer-events: none;
         }
-        .card-value-bottom {
-            align-items: flex-end;
+        
+        /* Shared Text Styling */
+        .card-corner .rank-text {
+            font-size: 0.875rem; 
+            font-weight: bold;
+        }
+        .card-corner .suit-icon {
+            font-size: 1.125rem; 
+        }
+
+        /* Top Left Position */
+        .card-corner.top-left {
+            top: 0;
+            left: 0;
+            align-items: flex-start;
+        }
+
+        /* Bottom Right Position (Rotated) */
+        .card-corner.bottom-right {
+            bottom: 0;
+            right: 0;
+            align-items: flex-end; 
             transform: rotate(180deg);
         }
 
+        /* Center Suit Icon */
+        .center-suit-icon {
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+
+        /* Mobile-Specific Styles (For screens max 640px) */
         @media (max-width: 640px) {
             .clock-position, .center-stack-container {
-                width: 55px; /* Further reduction for tiny screens */
-                height: 82px;
+                width: 55px; 
+                min-height: 82px; 
+            }
+            
+            .card-in-stack {
+                height: 82px; /* Fixed mobile height */
+            }
+
+            .card-corner {
+                padding: 3px; 
+            }
+
+            .card-corner .rank-text {
+                font-size: 0.75rem; 
+            }
+
+            .card-corner .suit-icon {
+                font-size: 0.875rem; 
             }
         }
 
@@ -222,12 +277,12 @@
     </div>
 
     <script>
-        // --- Game Variables ---
+        // --- Game Variables and Constants ---
         let deck = [];
-        let clockStacks = []; // Array of 12 arrays (stacks)
+        let clockStacks = []; 
         let centerStacks = { A: [], B: [] };
         let gameActive = false;
-        let playableClockCardsCount = 0; // Tracks available moves from clock to center
+        let playableClockCardsCount = 0; 
 
         // --- Drag and Drop State ---
         let draggingCard = null; 
@@ -235,10 +290,13 @@
         let dragOffsetX = 0;
         let dragOffsetY = 0;
 
-        // --- Constants and Utility Functions ---
+        // Constants
         const suits = ['♥', '♦', '♣', '♠'];
         const rankNames = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
         const centerStackIds = ['center-stack-A', 'center-stack-B'];
+        const CARD_HEIGHT = 120; // Must match CSS .card-in-stack height
+        // INCREASED OFFSET FOR BETTER VISIBILITY
+        const STACK_OFFSET = 6;  // 6px offset for visual stacking
 
         /**
          * Converts a rank number (1-13) to its display name (A, 2, ..., K).
@@ -274,9 +332,14 @@
          * @param {Array} array 
          */
         function shuffle(array) {
+            if (!Array.isArray(array)) {
+                console.error("Shuffle function requires an array.");
+                return []; 
+            }
+            
             for (let i = array.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[i], array[j]];
+                [array[i], array[j]] = [array[j], array[i]]; 
             }
         }
 
@@ -287,7 +350,6 @@
          * @returns {boolean}
          */
         function isValidMove(movingVal, targetVal) {
-            // targetVal is guaranteed to be non-null and face-up by the calling function.
             const rankDiff = Math.abs(movingVal - targetVal);
 
             // 1. Check for sequential difference (+1 or -1)
@@ -309,61 +371,75 @@
         // --- DOM Rendering Functions ---
 
         /**
-         * Renders a single card element.
+         * Renders a single card element, wrapped in a card-in-stack container for positioning.
          * @param {object} card 
          * @param {boolean} isDraggable True if the card can be dragged.
          * @param {string} stackId The ID of the stack the card belongs to.
          * @param {number} cardIndex The index within the stack.
-         * @param {boolean} isReserve Is this the center stack reserve card?
+         * @param {number} zIndex The z-index for stacking.
+         * @param {number} offsetY The vertical offset (in px) for stacking.
          * @returns {string} The HTML string for the card.
          */
-        function renderCard(card, isDraggable, stackId, cardIndex, isReserve = false) {
+        function renderCard(card, isDraggable, stackId, cardIndex, zIndex, offsetY) {
             if (!card) return '';
 
             const isRed = card.suit === '♥' || card.suit === '♦';
             const suitColor = isRed ? 'red-suit' : 'text-black';
-            const draggableClass = isDraggable ? 'draggable' : '';
-            const reserveClass = isReserve ? 'reserve-card' : '';
+            const draggableClass = isDraggable ? 'draggable playable-card' : '';
+            
+            // Apply position and depth styles
+            const stackStyles = `z-index: ${zIndex}; transform: translateY(${offsetY}px);`;
 
-            let content = '';
+            let cardContent = '';
+            
             if (card.isFaceUp) {
-                content = `
-                    <div class="card ${suitColor} ${draggableClass} ${reserveClass}" 
-                         data-stack-id="${stackId}" 
-                         data-card-index="${cardIndex}"
-                         data-rank="${card.rank}"
-                         data-value="${card.value}">
-                        <div class="card-value-top">
-                            <span class="text-sm font-bold">${getRankName(card.rank)}</span>
-                            <span class="text-xl">${card.suit}</span>
+                cardContent = `
+                    <div class="card ${suitColor}">
+                        <!-- Top Left Corner -->
+                        <div class="card-corner top-left">
+                            <span class="rank-text">${getRankName(card.rank)}</span>
+                            <span class="suit-icon">${card.suit}</span>
                         </div>
-                        <div class="flex-grow flex items-center justify-center">
+                        
+                        <!-- Center Suit -->
+                        <div class="center-suit-icon">
                             <span class="text-4xl ${suitColor}">${card.suit}</span>
                         </div>
-                        <div class="card-value-bottom">
-                            <span class="text-xl">${card.suit}</span>
-                            <span class="text-sm font-bold">${getRankName(card.rank)}</span>
+                        
+                        <!-- Bottom Right Corner (Rotated 180deg) -->
+                        <div class="card-corner bottom-right">
+                            <span class="rank-text">${getRankName(card.rank)}</span>
+                            <span class="suit-icon">${card.suit}</span>
                         </div>
                     </div>
                 `;
             } else {
-                content = `<div class="card face-down ${reserveClass}" 
-                               data-stack-id="${stackId}" 
-                               data-card-index="${cardIndex}"></div>`;
+                cardContent = `<div class="card face-down"></div>`;
             }
-            return content;
+            
+            // Wrap the visual card in the positioning container
+             return `
+                <div class="card-in-stack ${draggableClass}" style="${stackStyles}"
+                     data-stack-id="${stackId}" 
+                     data-card-index="${cardIndex}"
+                     data-rank="${card.rank}"
+                     data-value="${card.value}">
+                     ${cardContent}
+                </div>
+            `;
         }
 
         /**
-         * Renders the 12 clock stacks in a circular arrangement.
+         * Renders the 12 clock stacks in a circular arrangement, showing card depth.
          */
         function renderClockStacks() {
             const gameArea = document.getElementById('game-area');
             // Remove existing clock positions before re-rendering
             gameArea.querySelectorAll('.clock-position').forEach(el => el.remove());
 
-            // Use 49% of the available game area size for the radius to maximize coverage
-            const radius = Math.min(gameArea.clientWidth, gameArea.clientHeight) * 0.49;
+            // 1. Calculate Radius
+            const areaSize = Math.min(gameArea.clientWidth, gameArea.clientHeight);
+            const radius = areaSize * 0.45;
             
             clockStacks.forEach((stack, index) => {
                 const hour = index + 1;
@@ -373,24 +449,49 @@
 
                 const positionDiv = document.createElement('div');
                 positionDiv.id = `clock-stack-${hour}`;
-                // -translate-x-1/2 -translate-y-1/2 centers the 80x120 element on the calculated point
                 positionDiv.className = 'clock-position transform -translate-x-1/2 -translate-y-1/2';
                 positionDiv.style.left = `50%`;
                 positionDiv.style.top = `50%`;
-                // CSS translate handles the offset from the 50%/50% center
                 positionDiv.style.transform = `translate(calc(${x}px - 50%), calc(${y}px - 50%))`;
                 
-                const topCard = stack[stack.length - 1];
-                const isDraggable = stack.length > 0 && topCard && topCard.isFaceUp && gameActive;
-                
-                positionDiv.innerHTML = topCard ? renderCard(topCard, isDraggable, `clock-stack-${hour}`, stack.length - 1) : '<div class="card-stack"></div>';
+                let stackHTML = '';
+
+                if (stack.length > 0) {
+                    // Adjust height of container to show stacked cards
+                    const requiredHeight = CARD_HEIGHT + (stack.length - 1) * STACK_OFFSET;
+                    // Max height is set in CSS, but we set the calculated height here
+                    positionDiv.style.height = `${requiredHeight}px`;
+
+                    // Iterate from bottom card (index 0) up to the top card
+                    stack.forEach((card, cardIndex) => {
+                        // Only the topmost card can be draggable
+                        const isDraggable = cardIndex === stack.length - 1 && card.isFaceUp && gameActive;
+                        const zIndex = cardIndex + 1;
+                        const offsetY = cardIndex * STACK_OFFSET; 
+
+                        stackHTML += renderCard(
+                            card, 
+                            isDraggable, 
+                            `clock-stack-${hour}`, 
+                            cardIndex, 
+                            zIndex, 
+                            offsetY
+                        );
+                    });
+                    positionDiv.innerHTML = stackHTML;
+
+                } else {
+                    // If stack is empty, use the empty card-stack div (placeholder)
+                    positionDiv.innerHTML = '<div class="card-stack"></div>';
+                    positionDiv.style.height = `${CARD_HEIGHT}px`; // Reset height
+                }
                 
                 gameArea.appendChild(positionDiv);
             });
         }
 
         /**
-         * Renders the two center stacks, including the visual reserve card.
+         * Renders the two center stacks, showing the edge of remained cards.
          */
         function renderCenterStacks() {
             centerStackIds.forEach(id => {
@@ -398,39 +499,46 @@
                 const stackKey = stackElement.dataset.stackKey;
                 const stack = centerStacks[stackKey] || []; 
 
-                const topCard = stack[stack.length - 1]; 
-                // The reserve card is always at index 0, if the stack is not empty
-                const reserveCard = stack.length > 0 ? stack[0] : null; 
-                
                 let innerHTMLContent = '';
-                
-                // 1. Render the placeholder base if empty
+
                 if (stack.length === 0) {
                     innerHTMLContent = '<div class="card-stack"></div>';
-                }
+                    stackElement.style.height = `${CARD_HEIGHT}px`; // Reset height
+                } else {
+                    // Adjust height of container to show stacked cards
+                    const requiredHeight = CARD_HEIGHT + (stack.length - 1) * STACK_OFFSET;
+                    stackElement.style.height = `${requiredHeight}px`;
 
-                // 2. Render the face-down reserve card if it exists and is face-down
-                // Only render if it's still face-down (meaning it hasn't been activated yet)
-                if (reserveCard && !reserveCard.isFaceUp) {
-                    // Render reserve card: always face-down, not draggable, has reserve-card class for offset
-                    innerHTMLContent += renderCard(reserveCard, false, id, 0, true);
-                }
+                    // Iterate from bottom card (index 0) to top (index length - 1)
+                    stack.forEach((card, cardIndex) => {
+                        // All center cards are targets, not draggable
+                        const isDraggable = false; 
+                        const zIndex = cardIndex + 1;
+                        const offsetY = cardIndex * STACK_OFFSET;
+                        
+                        // Create a mutable copy of the card data for rendering
+                        const cardToRender = {...card};
+                        
+                        // Rules for face-up status in center stack:
+                        // 1. Index 0 (Reserve) keeps its status (false until activated).
+                        // 2. All others (played cards, index > 0) are shown face-up.
+                        if (cardIndex > 0) {
+                            cardToRender.isFaceUp = true;
+                        }
 
-                // 3. Render the top card (always face-up when dealing or playing)
-                if (topCard && topCard.isFaceUp) {
-                    // Render top card: not draggable (it's the target), z-index ensures it's on top
-                    // Only render the top card if it's DIFFERENT from the reserve card, or if the reserve card IS the top card AND is face-up (meaning it was just activated)
-                    const isReserveCardVisible = reserveCard === topCard && reserveCard.isFaceUp;
-                    const isPlayedCardVisible = reserveCard !== topCard;
-                    
-                    if (isPlayedCardVisible || isReserveCardVisible) {
-                        innerHTMLContent += renderCard(topCard, false, id, stack.length - 1);
-                    }
+                        innerHTMLContent += renderCard(
+                            cardToRender, 
+                            isDraggable, 
+                            id, 
+                            cardIndex, 
+                            zIndex, 
+                            offsetY
+                        );
+                    });
                 }
                 
                 // Clear any previous classes and re-apply during status update
-                stackElement.classList.remove('reserve-available');
-
+                stackElement.classList.remove('reserve-available', 'drop-target'); // Clear drop-target here too
                 stackElement.innerHTML = innerHTMLContent;
             });
         }
@@ -449,42 +557,35 @@
          * @param {Event} e 
          */
         function handleCenterStackClick(e) {
-            // The reserve move is ONLY allowed if you are blocked and not dragging
             if (!gameActive || draggingCard) {
                 console.log("Reserve click failed: Game not active or currently dragging.");
                 return;
             }
 
-            // Check if click was on the container itself (important for pointer-events fix)
             const target = e.target.closest('.center-stack-container');
             if (!target) return;
             
             // Only Stack A is designed to be the interactive element for combined activation
             if (target.id !== 'center-stack-A') return; 
 
-            // Check if the stack is currently highlighted as available for reserve use
             if (!target.classList.contains('reserve-available')) {
                 document.getElementById('message').textContent = `The Reserve is not yet available. You must play all available clock moves first.`;
-                console.log("Reserve click failed: Stack A not highlighted (Reserves either used or unavailable or moves are available).");
+                console.log("Reserve click failed: Reserves either used or unavailable or moves are available.");
                 return;
             } 
             
-            // Check if there are playable moves left (should be checked by the 'reserve-available' class, but double check)
             if (playableClockCardsCount > 0) {
                 document.getElementById('message').textContent = `Move available! You must play the highlighted card(s) before using the reserve.`;
                 console.log("Reserve click failed: Playable clock cards exist. Count:", playableClockCardsCount);
                 return;
             }
 
-            // Verify both reserves exist and are face-down (using the new robust check)
             const reserveAvailableA = hasReserve(centerStacks.A);
             const reserveAvailableB = hasReserve(centerStacks.B);
             
             if (reserveAvailableA && reserveAvailableB) {
                 // --- Execute Combined Reserve Flip for Stack A and B ---
                 
-                // 1. Discard all subsequent cards (the cards that were played onto the stack)
-                // We keep only the card at index 0 (the reserve)
                 const discardedCountA = centerStacks.A.length - 1;
                 const discardedCountB = centerStacks.B.length - 1;
 
@@ -492,7 +593,7 @@
                 centerStacks.A.splice(1); 
                 centerStacks.B.splice(1);
                 
-                // 2. Flip the remaining reserve card (now index 0) face-up
+                // Flip the remaining reserve card (now index 0) face-up
                 centerStacks.A[0].isFaceUp = true; 
                 centerStacks.B[0].isFaceUp = true;
 
@@ -510,12 +611,13 @@
         // --- Game Setup and Status ---
 
         /**
-         * Gets the value of the topmost face-up card on a center stack, or null if no face-up card is available (e.g., only a face-down reserve remains).
+         * Gets the value of the topmost face-up card on a center stack, or null if no face-up card is available.
          * @param {Array<object>} stack 
          * @returns {number | null}
          */
         function getPlayableCenterCardValue(stack) {
             const topCard = stack[stack.length - 1];
+            // Must check if the top card is face-up (it will be, unless it's the unactivated reserve, but checking is safe)
             return topCard && topCard.isFaceUp ? topCard.value : null;
         }
 
@@ -541,8 +643,8 @@
                 const stack = clockStacks[i - 1];
                 const topCard = stack[stack.length - 1];
                 const cardElementContainer = document.getElementById(`clock-stack-${i}`);
-                // Ensure we select the face-up card if it exists
-                const cardElement = cardElementContainer ? cardElementContainer.querySelector('.card.draggable') : null;
+                // Select the top card for highlighting
+                const cardElement = cardElementContainer ? cardElementContainer.querySelector(`.card-in-stack[data-card-index="${stack.length - 1}"]`) : null;
                 
                 // Clear highlight from all cards first
                 if (cardElement) { cardElement.classList.remove('playable-card'); }
@@ -552,10 +654,8 @@
                                      (centerTopB !== null && isValidMove(topCard.value, centerTopB));
                     
                     if (isPlayable) {
-                        // Re-select the card element as it might have been re-rendered
-                        const draggableCard = document.querySelector(`#clock-stack-${i} .card.draggable`);
-                        if (draggableCard) {
-                             draggableCard.classList.add('playable-card');
+                        if (cardElement) {
+                             cardElement.classList.add('playable-card');
                         }
                         playableClockCardsCount++;
                     }
@@ -568,16 +668,11 @@
             const reserveAvailableB = hasReserve(centerStacks.B);
             const bothReservesAvailable = reserveAvailableA && reserveAvailableB;
             
-            // Reserve is used if index 0 exists AND is face-up (meaning it was flipped during activation)
-            const isReserveUsedA = centerStacks.A.length > 0 && centerStacks.A[0].isFaceUp;
-            const isReserveUsedB = centerStacks.B.length > 0 && centerStacks.B[0].isFaceUp;
-
             centerStackIds.forEach(id => {
                 const stackElement = document.getElementById(id);
                 // Remove existing highlights first
-                stackElement.classList.remove('reserve-available');
+                stackElement.classList.remove('reserve-available', 'drop-target');
 
-                // The reserve is activated ONLY on Stack A when blocked AND both reserves are present
                 if (playableClockCardsCount === 0 && totalClockCards > 0 && bothReservesAvailable && id === 'center-stack-A') {
                     stackElement.classList.add('reserve-available');
                     stackElement.title = "Click to activate both Reserves!";
@@ -592,14 +687,8 @@
                 gameActive = false;
             } else if (playableClockCardsCount === 0) {
                 if (bothReservesAvailable) { 
-                    // BLOCKED, RESERVE AVAILABLE
                     document.getElementById('message').textContent = 'BLOCKED! Click the glowing blue Stack A to activate BOTH Reserve Cards simultaneously.';
-                } else if (isReserveUsedA && isReserveUsedB) {
-                    // BLOCKED, RESERVE USED AND NOW BLOCKED AGAIN (Both reserves flipped)
-                    document.getElementById('message').textContent = '💀 GAME OVER! The Reserves were activated and subsequently blocked. No further moves possible.';
-                    gameActive = false;
                 } else {
-                    // One or both stacks might be empty (not possible in this game) or missing a reserve
                     document.getElementById('message').textContent = '💀 GAME OVER! No more valid moves and no reserves left.';
                     gameActive = false;
                 }
@@ -614,18 +703,12 @@
                 centerStackIds.forEach(id => {
                     const stackElement = document.getElementById(id);
                     
-                    // Clear all existing drop highlights
-                    stackElement.classList.remove('drop-target');
-                    
                     const stackKey = stackElement.dataset.stackKey;
                     const targetStack = centerStacks[stackKey];
                     
-                    // FIX: Get the playable target card value (null if face-down reserve is on top)
                     const targetCardValue = getPlayableCenterCardValue(targetStack);
 
-                    // Only check for moves if there is a face-up target card
                     if (targetCardValue !== null && draggingCardData.card && isValidMove(draggingCardData.card.value, targetCardValue)) {
-                        // Apply highlight to the container element
                         stackElement.classList.add('drop-target');
                     }
                 });
@@ -637,14 +720,14 @@
          */
         function initializeGame() {
             deck = createDeck();
-            shuffle(deck);
+            shuffle(deck); 
             
             clockStacks = [];
             centerStacks = { A: [], B: [] }; 
             gameActive = true;
             draggingCard = null;
             draggingCardData = null;
-            playableClockCardsCount = 0; // Reset count
+            playableClockCardsCount = 0; 
 
             // 1. Distribute 4 cards to 12 clock locations (48 cards)
             for (let i = 0; i < 12; i++) {
@@ -687,10 +770,9 @@
             document.addEventListener('touchmove', doDrag, { passive: false }); 
             document.addEventListener('touchend', endDrag);
 
-            // Add listener for Reserve Flip (must be done after 'New Game' button)
             const centerStacksEl = document.getElementById('center-stacks');
             if (centerStacksEl) {
-                centerStacksEl.removeEventListener('click', handleCenterStackClick); // Clear previous listener
+                centerStacksEl.removeEventListener('click', handleCenterStackClick); 
                 centerStacksEl.addEventListener('click', handleCenterStackClick);
             }
 
@@ -702,7 +784,7 @@
             document.getElementById('message').textContent = 'Game started! Drag a glowing card to a center stack.';
         }
 
-        // --- Drag and Drop Logic (Debugging for stability) ---
+        // --- Drag and Drop Logic ---
 
         /**
          * Gets the client coordinates from a mouse or touch event.
@@ -719,11 +801,11 @@
             if (!gameActive || draggingCard) return;
 
             // Find the playable card element that initiated the event
-            const cardElement = e.target.closest('.card.draggable');
+            const cardElement = e.target.closest('.card-in-stack.draggable');
             
+            // Check if it's the top card and is playable (highlighted)
             if (!cardElement || !cardElement.classList.contains('playable-card')) return;
 
-            // Prevent browser default actions (like image drag or scrolling on touch)
             if (e.type === 'touchstart' || e.type === 'mousedown') {
                  e.preventDefault(); 
             }
@@ -751,7 +833,6 @@
             
             draggingCard.style.width = `${widthPx}px`;
             draggingCard.style.height = `${heightPx}px`;
-            // End Size Fix
 
             // Store original position and stack data
             draggingCardData = { 
@@ -786,7 +867,6 @@
             draggingCard.style.left = `${coords.x - dragOffsetX}px`;
             draggingCard.style.top = `${coords.y - dragOffsetY}px`;
             
-            // Re-run status check to update drop highlights dynamically
             updateStatus();
         }
         
@@ -799,33 +879,24 @@
             const coords = getEventCoords(e);
             let moveExecuted = false;
 
-            // Store the card reference and data before cleanup
             const tempDraggingCard = draggingCard;
             const tempDraggingCardData = draggingCardData;
-            
-            // 1. Identify the element directly under the drop point for robust hit testing
             
             // Temporarily hide the dragging card so elementFromPoint sees the target beneath it
             tempDraggingCard.style.visibility = 'hidden'; 
             const elementBelow = document.elementFromPoint(coords.x, coords.y);
             tempDraggingCard.style.visibility = 'visible'; // Restore visibility
 
-            // Find the center stack container (regardless of highlight status)
+            // Find the center stack container 
             const targetStackContainer = elementBelow ? elementBelow.closest('.center-stack-container') : null;
             
             if (targetStackContainer && tempDraggingCardData) {
                 const stackKey = targetStackContainer.dataset.stackKey;
                 const targetStack = centerStacks[stackKey];
                 
-                // FIX: Get the playable target card value (null if face-down reserve is on top)
                 const targetCardValue = getPlayableCenterCardValue(targetStack);
-
                 const movingVal = tempDraggingCardData.card.value;
 
-                console.log(`--- DROP ATTEMPT --- Moving: ${getRankName(movingVal)} (${movingVal}) onto Target: ${targetCardValue ? getRankName(targetCardValue) : 'Unplayable Target'}.`);
-
-
-                // Check validity against the game state
                 if (targetCardValue !== null && isValidMove(movingVal, targetCardValue)) {
                     handleMoveExecution(stackKey, tempDraggingCardData);
                     moveExecuted = true;
@@ -833,13 +904,10 @@
             }
             
             // 2. Perform cleanup 
-            
-            // Clear drag-specific styles
-            tempDraggingCard.classList.remove('dragging');
+            tempDraggingCard.classList.remove('dragging', 'playable-card');
             tempDraggingCard.style.position = '';
             tempDraggingCard.style.left = '';
             tempDraggingCard.style.top = '';
-            // Clear explicit pixel dimensions
             tempDraggingCard.style.width = '';
             tempDraggingCard.style.height = '';
 
