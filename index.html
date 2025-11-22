@@ -9,6 +9,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#1f2937">
     
+    <!-- Link to the Web Manifest file for PWA functionality -->
+    <link rel="manifest" href="manifest.json">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* Custom styles for the circular layout */
@@ -49,8 +52,8 @@
             position: absolute;
             width: 80px; /* Standard card width */
             min-height: 120px; /* Minimum height for one card, will expand for stack */
-            /* Add max height to prevent stacks from growing too big on huge screens */
-            max-height: 160px; /* Increased max height to accommodate larger offset */
+            /* Increased max height to accommodate larger offset */
+            max-height: 160px; 
             transform-origin: 50% 50%;
         }
 
@@ -162,20 +165,6 @@
             box-shadow: 0 0 15px 5px #10b981 !important;
         }
 
-        /* Highlight for playable reserve card (when blocked) */
-        .center-stack-container.reserve-available {
-            box-shadow: 0 0 15px 5px #3b82f6; /* Blue glow */
-            cursor: pointer; /* Change cursor to indicate clickability */
-            pointer-events: auto;
-        }
-        
-        /* CRITICAL FIX: Make all child cards transparent to clicks when the reserve is available, 
-           so the click event reaches the reserve-available container beneath them. */
-        .center-stack-container.reserve-available > .card-in-stack,
-        .center-stack-container.reserve-available > .card-stack {
-            pointer-events: none;
-        }
-
         /* --- ABSOLUTE POSITIONING FIX FOR CLIPPING --- */
         .card-corner {
             position: absolute;
@@ -244,6 +233,72 @@
             }
         }
 
+        /* --- Modal Styles --- */
+        .modal {
+            position: fixed;
+            z-index: 20000; 
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.8); 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background-color: #374151; /* Darker gray for modal body */
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #4b5563;
+            width: 90%;
+            max-width: 600px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            color: white;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .modal-content h3 {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-top: 1rem;
+            color: #facc15;
+        }
+        
+        .modal-content p {
+            margin-bottom: 0.5rem;
+            line-height: 1.4;
+        }
+        
+        .modal-content ul {
+            list-style-type: disc;
+            padding-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .modal-content strong {
+            color: #a5b4fc;
+        }
+        
+        .close-button {
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            color: #9ca3af;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .close-button:hover,
+        .close-button:focus {
+            color: #fca5a5;
+            text-decoration: none;
+        }
+
     </style>
 </head>
 <body class="p-4">
@@ -270,11 +325,39 @@
             <p id="moves-left" class="text-sm mt-1 text-gray-400"></p>
         </div>
 
-        <button onclick="initializeGame()" 
-                class="mt-6 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-lg rounded-full shadow-xl transition duration-300 transform hover:scale-105 active:scale-95">
-            New Game
+        <!-- Buttons -->
+        <div class="mt-6 flex space-x-4">
+            <button onclick="initializeGame()" 
+                    id="new-game-btn"
+                    class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-lg rounded-full shadow-xl transition duration-300 transform hover:scale-105 active:scale-95">
+                New Game
+            </button>
+            <button onclick="showRulesModal()" 
+                    id="help-btn"
+                    class="px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white font-bold text-lg rounded-full shadow-xl transition duration-300 transform hover:scale-105 active:scale-95">
+                Game Rules
+            </button>
+        </div>
+        
+        <!-- Reserve Activation Button (Only visible when moves run out) -->
+        <button onclick="activateReserves()" 
+                id="reserve-button"
+                class="hidden mt-4 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg rounded-full shadow-xl transition duration-300 transform hover:scale-105 active:scale-95">
+            Activate Reserves (No Moves Left)
         </button>
     </div>
+
+    <!-- Rules Modal -->
+    <div id="rules-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeRulesModal()">&times;</span>
+            <h2 class="text-2xl font-extrabold text-white mb-4 text-center">Clock Tower Solitaire Rules</h2>
+            <div id="rules-content">
+                <!-- Rules content will be populated here by JavaScript -->
+            </div>
+        </div>
+    </div>
+
 
     <script>
         // --- Game Variables and Constants ---
@@ -295,8 +378,46 @@
         const rankNames = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
         const centerStackIds = ['center-stack-A', 'center-stack-B'];
         const CARD_HEIGHT = 120; // Must match CSS .card-in-stack height
-        // INCREASED OFFSET FOR BETTER VISIBILITY
         const STACK_OFFSET = 6;  // 6px offset for visual stacking
+        
+        // --- Rules Content (for the Modal) ---
+        const GAME_RULES_HTML = `
+            <p class="text-base text-gray-300">Clock Tower Solitaire is a challenging variant where the goal is to clear all 48 cards from the clock positions by moving them to the two central foundation stacks in alternating sequence.</p>
+
+            <h3>1. The Setup</h3>
+            <ul>
+                <li><strong>The Clock:</strong> 48 cards are dealt face-down in 12 stacks (hours 1 to 12). Each stack has 4 cards.</li>
+                <li><strong>Clock Activation:</strong> The top card of each stack is flipped face-up and becomes playable.</li>
+                <li><strong>The Center Stacks (Foundations):</strong> Two cards are placed on each of the two central stacks (A and B).
+                    <ul>
+                        <li>The bottom card is the **Reserve Card** (kept face-down).</li>
+                        <li>The top card is the **Starting Foundation Card** (flipped face-up and is the initial target).</li>
+                    </ul>
+                </li>
+            </ul>
+
+            <h3>2. The Clock Move</h3>
+            <p class="text-base text-gray-300">You can drag the **top, face-up card** from any Clock Stack to the top of either Center Stack (A or B) if the rank is exactly **one rank higher or one rank lower** than the target card.</p>
+            <ul>
+                <li><strong>Sequence:</strong> The suit and color do not matter.</li>
+                <li><strong>Wrap-Around:</strong> Ace (A) and King (K) are consecutive; you can play an Ace on a King, or a King on an Ace.</li>
+                <li><strong>Result:</strong> When you move a card from a Clock Stack, the card immediately beneath it (if one exists) is automatically flipped face-up and becomes the new playable card.</li>
+            </ul>
+
+            <h3>3. The Reserve Activation (The Bailout)</h3>
+            <p class="text-base text-gray-300">If you have **NO valid moves left** from the Clock Stacks (no cards are glowing yellow), the **"Activate Reserves"** button will appear.</p>
+            <ul>
+                <li><strong>Requirement:</strong> Both central stacks (A and B) must still have their original face-down Reserve Card at the bottom.</li>
+                <li><strong>Action:</strong> Click the button. This action simultaneously **discards all played cards** from both stacks and **flips both Reserve Cards face-up.**</li>
+                <li><strong>Usage:</strong> This can only be done **once** per game.</li>
+            </ul>
+
+            <h3>4. Winning and Losing</h3>
+            <ul>
+                <li><strong>You Win:</strong> If you successfully clear all 48 cards from the Clock Stacks.</li>
+                <li><strong>You Lose:</strong> If you run out of valid moves and have already used (or cannot use) the Reserve.</li>
+            </ul>
+        `;
 
         /**
          * Converts a rank number (1-13) to its display name (A, 2, ..., K).
@@ -538,7 +659,7 @@
                 }
                 
                 // Clear any previous classes and re-apply during status update
-                stackElement.classList.remove('reserve-available', 'drop-target'); // Clear drop-target here too
+                stackElement.classList.remove('drop-target'); 
                 stackElement.innerHTML = innerHTMLContent;
             });
         }
@@ -553,36 +674,19 @@
         }
 
         /**
-         * Handles the click event on a center stack to activate both reserve cards (Combined Reserve Rule).
-         * @param {Event} e 
+         * Executes the combined reserve flip for Stack A and B.
          */
-        function handleCenterStackClick(e) {
-            if (!gameActive || draggingCard) {
-                console.log("Reserve click failed: Game not active or currently dragging.");
-                return;
-            }
-
-            const target = e.target.closest('.center-stack-container');
-            if (!target) return;
-            
-            // Only Stack A is designed to be the interactive element for combined activation
-            if (target.id !== 'center-stack-A') return; 
-
-            if (!target.classList.contains('reserve-available')) {
-                document.getElementById('message').textContent = `The Reserve is not yet available. You must play all available clock moves first.`;
-                console.log("Reserve click failed: Reserves either used or unavailable or moves are available.");
-                return;
-            } 
-            
-            if (playableClockCardsCount > 0) {
-                document.getElementById('message').textContent = `Move available! You must play the highlighted card(s) before using the reserve.`;
-                console.log("Reserve click failed: Playable clock cards exist. Count:", playableClockCardsCount);
-                return;
-            }
+        function activateReserves() {
+            if (!gameActive) return;
 
             const reserveAvailableA = hasReserve(centerStacks.A);
             const reserveAvailableB = hasReserve(centerStacks.B);
             
+            if (playableClockCardsCount > 0) {
+                 document.getElementById('message').textContent = `ERROR: Move available! You must play the highlighted card(s) before using the reserve.`;
+                 return;
+            }
+
             if (reserveAvailableA && reserveAvailableB) {
                 // --- Execute Combined Reserve Flip for Stack A and B ---
                 
@@ -604,7 +708,7 @@
                 renderCenterStacks();
                 updateStatus();
             } else {
-                 document.getElementById('message').textContent = `Reserve cards are missing or already used.`;
+                 document.getElementById('message').textContent = `ERROR: Reserve cards are missing or already used.`;
             }
         }
         
@@ -628,10 +732,14 @@
             // Calculate remaining clock cards
             let totalClockCards = clockStacks.reduce((sum, stack) => sum + stack.length, 0);
             let totalCenterCards = centerStacks.A.length + centerStacks.B.length;
+            const reserveButton = document.getElementById('reserve-button');
 
             document.getElementById('moves-left').textContent = `Clock cards remaining: ${totalClockCards} | Center stacks total: ${totalCenterCards}`;
 
-            if (!gameActive) return;
+            if (!gameActive) {
+                reserveButton.classList.add('hidden');
+                return;
+            }
 
             // 1. Determine playable clock cards 
             const centerTopA = getPlayableCenterCardValue(centerStacks.A);
@@ -662,24 +770,19 @@
                 }
             }
             
-            // 2. Determine Reserve Availability/Usage
+            // 2. Determine Reserve Availability/Visibility
             
             const reserveAvailableA = hasReserve(centerStacks.A);
             const reserveAvailableB = hasReserve(centerStacks.B);
             const bothReservesAvailable = reserveAvailableA && reserveAvailableB;
             
-            centerStackIds.forEach(id => {
-                const stackElement = document.getElementById(id);
-                // Remove existing highlights first
-                stackElement.classList.remove('reserve-available', 'drop-target');
-
-                if (playableClockCardsCount === 0 && totalClockCards > 0 && bothReservesAvailable && id === 'center-stack-A') {
-                    stackElement.classList.add('reserve-available');
-                    stackElement.title = "Click to activate both Reserves!";
-                } else {
-                    stackElement.title = "";
-                }
-            });
+            if (playableClockCardsCount === 0 && totalClockCards > 0 && bothReservesAvailable) {
+                // Show the explicit Reserve Button
+                reserveButton.classList.remove('hidden');
+            } else {
+                // Hide the Reserve Button
+                reserveButton.classList.add('hidden');
+            }
 
             // 3. Handle Game Status Messages
             if (totalClockCards === 0) {
@@ -687,7 +790,7 @@
                 gameActive = false;
             } else if (playableClockCardsCount === 0) {
                 if (bothReservesAvailable) { 
-                    document.getElementById('message').textContent = 'BLOCKED! Click the glowing blue Stack A to activate BOTH Reserve Cards simultaneously.';
+                    document.getElementById('message').textContent = 'BLOCKED! Use the "Activate Reserves" button to clear the board and reveal the Reserve Cards.';
                 } else {
                     document.getElementById('message').textContent = '💀 GAME OVER! No more valid moves and no reserves left.';
                     gameActive = false;
@@ -708,6 +811,9 @@
                     
                     const targetCardValue = getPlayableCenterCardValue(targetStack);
 
+                    // Clear drop-target class first
+                    stackElement.classList.remove('drop-target'); 
+
                     if (targetCardValue !== null && draggingCardData.card && isValidMove(draggingCardData.card.value, targetCardValue)) {
                         stackElement.classList.add('drop-target');
                     }
@@ -719,6 +825,8 @@
          * Sets up the initial game state.
          */
         function initializeGame() {
+            closeRulesModal(); // Ensure modal is closed on new game
+
             deck = createDeck();
             shuffle(deck); 
             
@@ -745,7 +853,7 @@
                 }
             });
             
-            // Center cards: bottom (0) down, top (1) up
+            // Center cards: bottom (0) down (Reserve), top (1) up (Playable)
             if (centerStacks.A.length === 2) {
                 centerStacks.A[0].isFaceUp = false; // Reserve card
                 centerStacks.A[1].isFaceUp = true; // Playable card
@@ -769,13 +877,6 @@
             document.addEventListener('mouseup', endDrag);
             document.addEventListener('touchmove', doDrag, { passive: false }); 
             document.addEventListener('touchend', endDrag);
-
-            const centerStacksEl = document.getElementById('center-stacks');
-            if (centerStacksEl) {
-                centerStacksEl.removeEventListener('click', handleCenterStackClick); 
-                centerStacksEl.addEventListener('click', handleCenterStackClick);
-            }
-
 
             renderClockStacks();
             renderCenterStacks();
@@ -867,6 +968,8 @@
             draggingCard.style.left = `${coords.x - dragOffsetX}px`;
             draggingCard.style.top = `${coords.y - dragOffsetY}px`;
             
+            // Optimization: Only update status on drag end for performance, 
+            // but keep for target highlighting (less critical on small board)
             updateStatus();
         }
         
@@ -956,6 +1059,22 @@
             document.getElementById('message').textContent = `Played ${getRankName(movingCard.rank)}${movingCard.suit} on Center Stack ${stackKey}.`;
         }
 
+        // --- Modal Functions ---
+        
+        /**
+         * Shows the game rules modal.
+         */
+        function showRulesModal() {
+            document.getElementById('rules-content').innerHTML = GAME_RULES_HTML;
+            document.getElementById('rules-modal').classList.remove('hidden');
+        }
+
+        /**
+         * Hides the game rules modal.
+         */
+        function closeRulesModal() {
+            document.getElementById('rules-modal').classList.add('hidden');
+        }
 
         window.onload = initializeGame;
 
@@ -965,6 +1084,14 @@
                 renderClockStacks();
              }
         });
+        
+        // Close modal when clicking outside of the content (window)
+        window.onclick = function(event) {
+            const modal = document.getElementById('rules-modal');
+            if (event.target == modal) {
+                closeRulesModal();
+            }
+        }
         
     </script>
 </body>
